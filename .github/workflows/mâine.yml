@@ -1,0 +1,51 @@
+name: Setup AnyDesk + Tailscale on Windows 11
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  configure-windows:
+    runs-on: windows-latest
+    timeout-minutes: 360  # 6 ore execuție max
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Download and install AnyDesk silently (max 12s)
+        run: |
+          Invoke-WebRequest -Uri "https://download.anydesk.com/AnyDesk.exe" -OutFile "$env:TEMP\AnyDesk.exe"
+          Start-Process -FilePath "$env:TEMP\AnyDesk.exe" -ArgumentList "--install \"C:\Program Files (x86)\AnyDesk\" --start-with-win --create-desktop-icon --silent" -Wait
+
+      - name: Configure AnyDesk unattended access with password
+        run: |
+          $settingsPath = "$env:APPDATA\AnyDesk\ad_mgmt_settings.conf"
+          if (!(Test-Path $settingsPath)) { New-Item -ItemType File -Path $settingsPath -Force }
+          Add-Content -Path $settingsPath -Value "unattended_access_password=ParolaPuternica123"
+          Add-Content -Path $settingsPath -Value "privacy_settings=disable"
+
+      - name: Download and install Tailscale silently
+        run: |
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/windows-amd64/TailscaleSetup.exe" -OutFile "$env:TEMP\TailscaleSetup.exe"
+          Start-Process -FilePath "$env:TEMP\TailscaleSetup.exe" -ArgumentList "/quiet" -Wait
+
+      - name: Authenticate Tailscale with auth key and run service
+        run: tailscale up --auth-key=tskey-abcdef123456 --accept-routes --run-service
+
+      - name: Set power settings to prevent sleep
+        run: |
+          powercfg /change standby-timeout-ac 0
+          powercfg /change monitor-timeout-ac 0
+          powercfg /change disk-timeout-ac 0
+
+      - name: Log AnyDesk ID and password
+        run: |
+          Start-Sleep -Seconds 10
+          $idLine = Select-String -Path "$env:APPDATA\AnyDesk\service.conf" -Pattern 'ad.id'
+          $id = $idLine.Line -replace '.*ad.id=',''
+          Write-Host "AnyDesk ID: $id"
+          Write-Host "AnyDesk Password: ParolaPuternica123"
+
+      - name: Keep workflow alive 6 hours
+        run: Start-Sleep -Seconds 21600
