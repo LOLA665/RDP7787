@@ -1,0 +1,54 @@
+name: Setup AnyDesk + Tailscale on Windows 11 (normal install)
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  configure-windows:
+    runs-on: windows-latest
+    timeout-minutes: 360  # 6 ore
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Download AnyDesk installer
+        run: |
+          Invoke-WebRequest -Uri "https://download.anydesk.com/AnyDesk.exe" -OutFile "$env:TEMP\AnyDesk.exe"
+
+      - name: Run AnyDesk installer normally (with UI)
+        run: |
+          Start-Process -FilePath "$env:TEMP\AnyDesk.exe" -Wait
+
+      - name: Configure AnyDesk unattended access with password
+        run: |
+          $settingsPath = "$env:APPDATA\AnyDesk\ad_mgmt_settings.conf"
+          if (!(Test-Path $settingsPath)) { New-Item -ItemType File -Path $settingsPath -Force }
+          Add-Content -Path $settingsPath -Value "unattended_access_password=ParolaPuternica123"
+          Add-Content -Path $settingsPath -Value "privacy_settings=disable"
+
+      - name: Download and install Tailscale silently
+        run: |
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/windows-amd64/TailscaleSetup.exe" -OutFile "$env:TEMP\TailscaleSetup.exe"
+          Start-Process -FilePath "$env:TEMP\TailscaleSetup.exe" -ArgumentList "/quiet" -Wait
+
+      - name: Authenticate Tailscale with auth key
+        run: tailscale up --auth-key=tskey-abcdef123456 --accept-routes --run-service
+
+      - name: Prevent sleep mode
+        run: |
+          powercfg /change standby-timeout-ac 0
+          powercfg /change monitor-timeout-ac 0
+          powercfg /change disk-timeout-ac 0
+
+      - name: Log AnyDesk ID and password
+        run: |
+          Start-Sleep -Seconds 10
+          $idLine = Select-String -Path "$env:APPDATA\AnyDesk\service.conf" -Pattern 'ad.id'
+          $id = $idLine.Line -replace '.*ad.id=',''
+          Write-Host "AnyDesk ID: $id"
+          Write-Host "AnyDesk Password: ParolaPuternica123"
+
+      - name: Keep workflow alive 6 hours
+        run: Start-Sleep -Seconds 21600
