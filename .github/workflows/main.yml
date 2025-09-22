@@ -1,0 +1,50 @@
+name: Setup AnyDesk + Tailscale on Windows11
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  configure-windows:
+    runs-on: windows-latest
+    timeout-minutes: 360  # până la 6 ore execuție
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Install AnyDesk silently
+        run: |
+          Invoke-WebRequest -Uri "https://download.anydesk.com/AnyDesk.exe" -OutFile "$env:TEMP\AnyDesk.exe"
+          Start-Process -FilePath "$env:TEMP\AnyDesk.exe" -ArgumentList "/silent" -Wait
+
+      - name: Configure AnyDesk unattended access
+        run: |
+          # Setare parolă pentru acces neasistat (schimbă 'ParolaPuternica123' cu parolă ta)
+          $anydesk_settings_path = "$env:APPDATA\AnyDesk\ad_mgmt_settings.conf"
+          Set-Content $anydesk_settings_path "unattended_access_password=ParolaPuternica123"
+          # Opreste prompt la conectare si activeaza acces neasistat
+          Set-Content -Path "$anydesk_settings_path" -Value "privacy_settings=disable" -Append
+
+      - name: Install and authenticate Tailscale with auth key
+        run: |
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/windows-amd64/TailscaleSetup.exe" -OutFile "$env:TEMP\TailscaleSetup.exe"
+          Start-Process -FilePath "$env:TEMP\TailscaleSetup.exe" -ArgumentList "/quiet" -Wait
+          tailscale up --authkey=tskey-abcdef123456 --accept-routes --advertise-routes=10.0.0.0/24 --run-service
+
+      - name: Set Power Settings to prevent sleep
+        run: |
+          powercfg /change standby-timeout-ac 0
+          powercfg /change monitor-timeout-ac 0
+          powercfg /change disk-timeout-ac 0
+
+      - name: Display AnyDesk ID and password logged
+        run: |
+          Start-Sleep -Seconds 10
+          $id = (Get-Content "$env:APPDATA\AnyDesk\service.conf" -Raw) -match 'ad.id=([0-9]+)'
+          Write-Host "AnyDesk ID: $matches[1]"
+          Write-Host "AnyDesk Password: ParolaPuternica123"
+
+      - name: Keep workflow alive for 6 hours
+        run: |
+          Start-Sleep -Seconds 21600
